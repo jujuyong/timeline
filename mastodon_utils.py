@@ -8,7 +8,7 @@ def html_to_text(html):
 def get_mastodon_client(instance_url="https://mastodon.social"):
     return Mastodon(
         api_base_url=instance_url,
-        access_token="mpX28vXvWV2qrZ53lrFFhhe_4AIcwiw-Oj60Z1irWF8"
+        access_token="_"
     )
 
 def mastodon_search_accounts(query, limit=5, instance_url="https://mastodon.social"):
