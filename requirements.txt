@@ -14,3 +14,4 @@ pymongo
 google-api-python-client
 mastodon-py
 streamlit
+atproto
