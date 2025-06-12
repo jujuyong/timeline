@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>아티스트 타임라인 요약</title>
+  <style>
+    #loading {
+      font-weight: bold;
+      color: #555;
+      margin-top: 10px;
+    }
+    #summaryResult {
+      margin-top: 15px;
+      white-space: pre-wrap;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+    .profile-preview {
+  display: flex; align-items: center; margin-bottom: 18px;
+}
+.profile-avatar {
+  width: 54px; height: 54px; border-radius: 50%; margin-right: 14px;
+}
+.profile-name {
+  font-weight: bold; font-size: 18px;
+}
+.profile-desc {
+  color: #555; font-size: 13px; margin-top: 3px;
+}
+.profile-meta {
+  color: #888; font-size: 12px; margin-top: 2px;
+}
+    .video-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .video-item img {
+      width: 120px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: transform 0.2s ease;
+    }
+    .video-item img:hover {
+      transform: scale(1.05);
+    }
+    .video-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .video-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    h3 {
+      margin-top: 28px;
+      margin-bottom: 10px;
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 4px;
+    }
+    .more-btn {
+      margin: 12px 0 24px 0;
+      padding: 6px 14px;
+      border-radius: 5px;
+      background: #f5f5f5;
+      border: 1px solid #bbb;
+      cursor: pointer;
+      color: #222;
+      font-size: 14px;
+    }
+    .more-btn:hover {
+      background: #e8e8e8;
+    }
+    .sns-panel {
+      margin-bottom: 40px;
+      border-radius: 8px;
+      background: #fcfcfc;
+      border: 1px solid #e5e5e5;
+      padding: 18px 20px 20px 20px;
+      box-shadow: 0px 1px 7px 0px #f0f0f0;
+    }
+    .sns-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .removeBtn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: #888;
+    }
+    .removeBtn:hover {
+      color: #d00;
+    }
+    .sns-controls {
+      margin-bottom: 28px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    #snsPanels {
+      margin-top: 22px;
+    }
+.youtube-sections {
+  display: flex;
+  gap: 24px;
+  justify-content: flex-start;
+  flex-wrap: wrap; /* 줄바꿈 허용 */
+}
+.youtube-section {
+  flex: 1 1 400px;      /* 최소 320px, 남는 공간 비율로 채움 */
+  max-width: 800px;     /* 최대 400px */
+  min-width: 260px;     /* 최소 260px */
+  background: #fafbfc;
+  border-radius: 8px;
+  padding: 10px 10px 18px 10px;
+  box-shadow: 0 1px 4px #eee;
+  margin-bottom: 16px;
+}
+.youtube-section h3 {
+  text-align: center;
+  margin-top: 0;
+}
+
+  </style>
+</head>
+<body>
+ <h1>추천 검색</h1>
+  <div id="suggest-section" style="margin-bottom:30px;">
+  <form id="suggest-form" style="display:flex;gap:8px;">
+    <input type="text" id="suggest-input" placeholder="추천받고 싶은 아티스트 설명, 키워드 등을 입력하세요" style="flex:1;padding:8px;font-size:16px;">
+    <button type="submit" style="padding:8px 16px;">추천 검색</button>
+  </form>
+  <div id="suggest-result" style="margin-top:18px;"></div>
+</div>
+
+  <h1>통합 타임라인 요약</h1>
+  <div class="sns-controls">
+    <select id="snsType">
+      <option value="youtube">YouTube</option>
+      <option value="twitter">Twitter</option>
+      <option value="instagram">Instagram</option>
+      <option value="bluesky">Bluesky</option>
+      <option value="mastodon">Mastodon</option>
+      <!-- 향후 추가 -->
+    </select>
+    <input id="snsInput" type="text" placeholder="채널 URL 또는 ID 입력" />
+    <button id="addSnsBtn">추가</button>
+  </div>
+ <!-- <div id="recentArtists" style="margin-bottom:20px;"></div>-->
+  <div id="snsPanels"></div>
+
+<script>
+const snsPanels = document.getElementById('snsPanels');
+const addSnsBtn = document.getElementById('addSnsBtn');
+const snsTypeSelect = document.getElementById('snsType');
+const snsInput = document.getElementById('snsInput');
+const TWEET_BATCH_SIZE = 10;
+const MASTODON_BATCH_SIZE = 10;
+  
+addSnsBtn.addEventListener('click', () => {
+  const type = snsTypeSelect.value;
+  const input = snsInput.value.trim();
+
+  if (!input) {
+    alert('URL 또는 ID를 입력하세요.');
+    return;
+  }
+
+  const panel = document.createElement('div');
+  panel.className = 'sns-panel';
+  panel.innerHTML = `
+    <div class="sns-header">
+      <strong>${type.toUpperCase()}</strong>
+      <button class="removeBtn">❌</button>
+    </div>
+    <div class="sns-content">📡 데이터 로딩 중...</div>
+  `;
+  snsPanels.prepend(panel);
+
+  if (type === 'youtube') {
+    createYoutubePanel(panel, input);
+  } else if (type === 'twitter') {
+    // 트위터의 경우, URL이면 아이디만 추출(간단 처리)
+    let username = input;
+    if (username.startsWith("https://twitter.com/")) {
+      username = username.replace("https://twitter.com/", "").split('/')[0].split('?')[0];
+    }
+    createTwitterPanel(panel, username);
+  } else if (type === 'instagram') {
+  let username = input;
+    if (username.startsWith("https://www.instagram.com/")) {
+      username = username.replace("https://www.instagram.com/", "").split('/')[0].split('?')[0];
+    }
+  createInstagramPanel(panel, username); // 추가
+    } else if (type === 'bluesky') {
+    let username = input.replace(/^@/, '');
+    createBlueskyPanel(panel, username);
+    } else if (type === 'mastodon') {
+    // 마스토돈: username@instance 또는 username만 입력받고, 인스턴스는 기본값 사용
+    let username = input;
+    let instance = "https://mastodon.social";
+ if (username.includes('@')) {
+    const parts = username.split('@');
+    if (parts.length === 3) {
+      username = parts[1];
+      instance = parts[2].startsWith('http') ? parts[2] : `https://${parts[2]}`;
+    } else if (parts.length === 2) {
+      username = parts[0];
+      instance = parts[1].startsWith('http') ? parts[1] : `https://${parts[1]}`;
+    }
+  }
+    createMastodonPanel(panel, username, instance);
+  } else {
+    panel.querySelector('.sns-content').innerText = `아직 지원되지 않는 SNS 유형입니다: ${type}`;
+  }
+  snsInput.value = '';
+});
+
+snsPanels.addEventListener('click', (e) => {
+  if (e.target.classList.contains('removeBtn')) {
+    const panel = e.target.closest('.sns-panel');
+    if (panel) panel.remove();
+  }
+});
+// 추천 검색 기능
+// 추천 검색 폼 제출 이벤트
+document.getElementById('suggest-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const input = document.getElementById('suggest-input').value.trim();
+  const resultDiv = document.getElementById('suggest-result');
+  if (!input) {
+    resultDiv.innerHTML = '<span style="color:red;">검색어를 입력하세요.</span>';
+    return;
+  }
+  resultDiv.innerHTML = '⏳ 추천 결과를 불러오는 중...';
+  try {
+    const res = await fetch('/api/recommend_artist', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ description: input })
+    });
+    const data = await res.json();
+    let html = '';
+
+    // 2. AI가 생성한 추천 리스트 버튼화
+    if (data.ai_result && data.ai_result.db_results && data.ai_result.db_results.length) {
+      html += `<div><b>AI 기반 추천 계정</b><ul>`;
+      data.ai_result.db_results.forEach(item => {
+        let platform = item.platform || '';
+        let displayName = item.account_name || item.name || item.url;
+        let id = item.url || item.account_name || '';
+        html += `<li>
+          <button class="recommend-connect-btn"
+            data-platform="${platform}"
+            data-id="${id}"
+            style="margin-bottom:4px;padding:4px 10px;border-radius:5px;border:1px solid #bbb;cursor:pointer;">
+            ${displayName}
+          </button>
+          <span style="color:#666;">${item.description || ''}</span>
+        </li>`;
+      });
+      html += `</ul></div>`;
+    }
+
+    // 3. DB에서 가져온 추천 리스트 버튼화
+    if (data.db_results && data.db_results.length) {
+      html += `<div><b>DB 기반 실존 계정</b><ul>`;
+      data.db_results.forEach(item => {
+        let platform = item.platform || '';
+        let displayName = item.account_name || item.name || item.url;
+        let id = item.url || item.account_name || '';
+        html += `<li>
+          <button class="recommend-connect-btn"
+            data-platform="${platform}"
+            data-id="${id}"
+            style="margin-bottom:4px;padding:4px 10px;border-radius:5px;border:1px solid #bbb;cursor:pointer;">
+            ${displayName}
+          </button>
+          <span style="color:#666;">${item.summary || item.description || ''}</span>
+        </li>`;
+      });
+      html += `</ul></div>`;
+    }
+
+    if (!html) html = '추천 결과가 없습니다.';
+    resultDiv.innerHTML = html;
+  } catch (err) {
+    resultDiv.innerHTML = `<span style="color:red;">오류: ${err.message}</span>`;
+  }
+});
+
+// 버튼 클릭 시 타임라인 자동 추가
+
+document.getElementById('suggest-result').addEventListener('click', function(e) {
+  if (!e.target.classList.contains('recommend-connect-btn')) return;
+  const platform = e.target.dataset.platform.toLowerCase();
+  const id = e.target.dataset.id;
+  // 기존 SNS 추가 버튼과 동일하게 패널 추가
+  const panel = document.createElement('div');
+  panel.className = 'sns-panel';
+  panel.innerHTML = `
+    <div class="sns-header">
+      <strong>${platform.toUpperCase()}</strong>
+      <button class="removeBtn">❌</button>
+    </div>
+    <div class="sns-content">📡 데이터 로딩 중...</div>
+  `;
+  snsPanels.prepend(panel);
+
+  if (platform === 'youtube') {
+    createYoutubePanel(panel, id);
+  } else if (platform === 'twitter') {
+    createTwitterPanel(panel, id);
+  } else if (platform === 'instagram') {
+    createInstagramPanel(panel, id);
+  } else if (platform === 'bluesky'){
+    createBlueskyPanel(panel, id);
+  } else if (platform === 'mastodon') {
+    // 마스토돈은 id가 username, instance는 기본값 사용(필요시 수정)
+    createMastodonPanel(panel, id, "https://mastodon.social");
+  }
+});
+document.addEventListener('click', async (e) => {
+  if (!e.target.classList.contains('summaryBtn')) return;
+
+  const btn = e.target;
+  const mode = btn.dataset.mode;
+  const videoUrl = btn.dataset.videourl;
+  const title = btn.dataset.title;
+  const thumbnailUrl = btn.dataset.thumb;
+  const publishDate = btn.dataset.date;
+
+  const videoItem = btn.closest('.video-item');
+  const summaryDiv = videoItem.querySelector('.summary-result');
+  summaryDiv.innerText = '⏳ 요약 중...';
+
+  try {
+    const res = await fetch('/summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        video_url: videoUrl,
+        title,
+        thumbnail_url: thumbnailUrl,
+        publish_date: publishDate,
+        mode
+      })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      summaryDiv.innerText = `📄 요약 (${data.mode === 'audio' ? '고급' : '기본'}):\n${data.summary}`;
+    } else {
+      summaryDiv.innerText = `요약 실패: ${data.error || '알 수 없는 오류'}`;
+    }
+  } catch (err) {
+    summaryDiv.innerText = '요약 요청 중 오류 발생';
+    console.error(err);
+  }
+});
+/*
+ async function renderRecentArtists() {
+  const res = await fetch('/api/recent_artists');
+  const list = await res.json();
+  const container = document.getElementById('recentArtists');
+  if (!list.length) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = `<strong>검색 내역</strong><br>` + list.map(item => {
+    // SNS 종류, 주소, 이름 추출
+    let type = '기타', url = '#';
+    if (item.id.startsWith('twitter:')) {
+      type = '트위터';
+      url = `https://twitter.com/${item.id.replace('twitter:', '')}`;
+    } else if (item.id.startsWith('instagram:')) {
+      type = '인스타그램';
+      url = `https://instagram.com/${item.id.replace('instagram:', '')}`;
+      } else if (item.id.startsWith('mastodon:')) {
+      type = '마스토돈';
+      const mastodonInfo = item.id.replace('mastodon:', '');
+      if (mastodonInfo.includes('/@')) {
+        const parts = mastodonInfo.split('/@');
+        instance = parts[0].replace(/^https?:\/\//, ''); 
+        username = parts[1];
+        url = `https://${instance}/@${username}`; }
+    } else {
+      type = '유튜브';
+      url = item.id;
+    }
+    return `[${type}] <a href="${url}" target="_blank">${item.name}</a>`;
+  }).join('<br>');
+}
+// 페이지 로드 시 실행
+window.addEventListener('DOMContentLoaded', renderRecentArtists);
+*/
+function createMastodonPanel(panel, username, instance) {
+  const tootListEl = panel.querySelector('.sns-content');
+  let toots = [];
+  let loadedCount = 0;
+  let mastodonUserId = null;
+async function loadToots() {
+    tootListEl.innerHTML = '⏳ 마스토돈 툿 불러오는 중...';
+    try {
+      // user_id가 있으면 user_id로, 없으면 username으로 요청
+      let url = `/api/recent_mastodon_toots?instance=${encodeURIComponent(instance)}&start=${loadedCount}&count=${MASTODON_BATCH_SIZE}`;
+      if (mastodonUserId) {
+        url += `&user_id=${encodeURIComponent(mastodonUserId)}`;
+      } else {
+        url += `&username=${encodeURIComponent(username)}`;
+      }
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data && data.length) {
+        const t = data[0];
+        const profileDiv = document.createElement('div');
+        profileDiv.className = 'profile-preview';
+        profileDiv.style = 'display:flex;align-items:center;margin-bottom:16px;';
+        // 아바타(프사) 필드가 있으면 아래 라인 활성화
+        // let profileImg = t.avatar ? `<img src="${t.avatar}" class="profile-avatar" style="width:48px;height:48px;border-radius:50%;margin-right:12px;">` : '';
+        let profileImg = '';
+        profileDiv.innerHTML = `
+          ${profileImg}
+          <div>
+            <div class="profile-name" style="font-weight:bold;font-size:18px;">${t.display_name || ''}</div>
+            <div class="profile-desc" style="color:#666;font-size:13px;margin-top:4px;">${t.note || ''}</div>
+            <div class="profile-meta" style="color:#888;font-size:12px;margin-top:2px;">@${username}@${instance.replace(/^https?:\/\//, '')}</div>
+          </div>
+        `;
+        const header = panel.querySelector('.sns-header');
+        // 중복 추가 방지
+        if(header && !panel.querySelector('.profile-preview')) header.insertAdjacentElement('afterend', profileDiv);
+      }
+      // user_id를 응답에서 받아 저장 (백엔드에서 account_id 포함 필요)
+      if (!mastodonUserId && Array.isArray(data) && data.length > 0 && data[0].account_id) {
+        mastodonUserId = data[0].account_id;
+      }
+      if (Array.isArray(data) && data.length > 0) {
+        toots = toots.concat(data);
+        renderToots();
+        loadedCount = toots.length;
+      } else if (loadedCount === 0) {
+        tootListEl.innerHTML = '<p>툿이 없습니다.</p>';
+      }
+    } catch (err) {
+      tootListEl.innerHTML = '<p>툿 불러오기 에러</p>';
+      console.error(err);
+    }
+  }
+async function renderToots() {
+  tootListEl.innerHTML = '';
+
+  const contents = toots.map(t => t.content);
+
+  // 2. 번역 묶음 요청
+  let translations = [];
+  if (contents.length) {
+    const res = await fetch('/api/translate_if_needed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts: contents })
+    });
+    const data = await res.json();
+    translations = data.translated || [];
+        await fetch('/api/save_search_history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: username,
+        platform: 'mastodon',
+        account_name: username,
+        url: `${instance}/@${username}`,
+        success: true,
+        description: contents.join('\n'),
+        summary: '',
+        user_id: null
+      })
+    });
+  }
+const saveRes = await fetch('/api/save_search_history', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    query: username,
+    platform: 'mastodon',
+    account_name: username,
+    url: `${instance}/@${username}`,
+    success: true,
+    description: contents.join('\n'),
+    summary: '',
+    user_id: null
+  })
+});
+const saveData = await saveRes.json();
+if (!saveRes.ok || saveData.result !== 'ok') {
+  console.error('DB 저장 실패:', saveData);
+}
+  // 3. 렌더링 (번역 결과 매핑)
+  toots.forEach((t, idx) => {
+    const div = document.createElement('div');
+    div.className = 'mastodon-toot-item';
+    div.innerHTML = `
+      <div style="font-size:15px;">${t.content}</div>
+      <div style="font-size:11px;color:#888;margin-top:4px;">
+        <a href="${t.url}" target="_blank">툿 바로가기</a>
+        | ${t.date}
+        | 💬 ${t.reply_count} 🔁 ${t.reblog_count} ⭐ ${t.favourite_count}
+        <button class="reactionBtn" data-statusid="${t.status_id}" data-instance="${instance}" style="margin-left:10px;">반응 보기</button>
+      </div>
+      <div class="reaction-result" style="margin-top:10px; font-size:13px; color:#222;"></div>
+    `;
+    // 번역 결과 표시
+    const translationDiv = document.createElement('div');
+    translationDiv.className = 'mastodon-translation';
+    translationDiv.style = 'font-size:12px; color:#888; margin-left:2px; display:none;';
+    if (translations[idx]) {
+      translationDiv.innerText = translations[idx];
+      translationDiv.style.display = 'block';
+    }
+    div.appendChild(translationDiv);
+    tootListEl.appendChild(div);
+  });
+
+  // 더보기 버튼
+  if (toots.length > 0 && toots.length % MASTODON_BATCH_SIZE === 0) {
+    const moreBtn = document.createElement('button');
+    moreBtn.innerText = '더보기';
+    moreBtn.className = 'more-btn';
+    moreBtn.onclick = loadToots;
+    tootListEl.appendChild(moreBtn);
+  }
+}
+  // 반응 요약(댓글/인용) 버튼 이벤트 위임
+tootListEl.addEventListener('click', function(e) {
+  if (!e.target.classList.contains('reactionBtn')) return;
+  const btn = e.target;
+  const status_id = btn.dataset.statusid;
+  const instance = btn.dataset.instance;
+  const resultDiv = btn.closest('.mastodon-toot-item').querySelector('.reaction-result');
+  resultDiv.innerText = '⏳ 반응 요약 중...';
+  (async function() {
+    try {
+      const res = await fetch(`/api/mastodon_toot_reactions?status_id=${encodeURIComponent(status_id)}&instance=${encodeURIComponent(instance)}`);
+      const data = await res.json();
+      if (res.ok) {
+        resultDiv.innerText = `📢 반응 요약:\n${data.summary}`;
+      } else {
+        resultDiv.innerText = `요약 실패: ${data.error || '알 수 없는 오류'}`;
+      }
+    } catch (err) {
+      resultDiv.innerText = '요약 실패';
+      console.error(err);
+    }
+  })();
+});
+
+// 최초 로드
+loadToots();
+}
+
+function createBlueskyPanel(panel, username) {
+  const skyListEl = panel.querySelector('.sns-content');
+  let skys = [];
+  let loadedCount = 0;
+  const SKY_BATCH_SIZE = 10;
+
+  async function loadSkys() {
+    skyListEl.innerHTML = '⏳ 게시물 불러오는 중...';
+    const res = await fetch(`/api/recent_bluesky_skys?username=${encodeURIComponent(username)}&start=${loadedCount}&count=${SKY_BATCH_SIZE}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      skys = skys.concat(data);
+      renderSkys();
+      loadedCount = skys.length;
+    } else if (loadedCount === 0) {
+      skyListEl.innerHTML = '<p>게시물이 없습니다.</p>';
+    }
+  }
+
+  function renderSkys() {
+    skyListEl.innerHTML = '';
+    skys.forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'bluesky-post-item';
+      div.innerHTML = `
+        <div style="font-size:15px;">${s.content}</div>
+        <div style="font-size:11px;color:#888;margin-top:4px;">
+          <a href="${s.url}" target="_blank">게시물 바로가기</a>
+          | ${s.date}
+          | <button class="reactionBtn" data-postid="${s.post_id}" style="margin-left:10px;">반응 보기</button>
+        </div>
+        <div class="reaction-result" style="margin-top:10px; font-size:13px; color:#222;"></div>
+      `;
+      skyListEl.appendChild(div);
+    });
+
+    // 더보기 버튼
+    if (skys.length > 0 && skys.length % SKY_BATCH_SIZE === 0) {
+      const moreBtn = document.createElement('button');
+      moreBtn.innerText = '더보기';
+      moreBtn.className = 'more-btn';
+      moreBtn.onclick = loadSkys;
+      skyListEl.appendChild(moreBtn);
+    }
+  }
+
+  // 반응 요약 버튼 이벤트 위임
+  skyListEl.addEventListener('click', async e => {
+    if (!e.target.classList.contains('reactionBtn')) return;
+    const btn = e.target;
+    const postId = btn.dataset.postid;
+    const resultDiv = btn.closest('.bluesky-post-item').querySelector('.reaction-result');
+    resultDiv.innerText = '⏳ 반응 요약 중...';
+    const res = await fetch(`/api/bluesky_sky_reactions?post_id=${encodeURIComponent(postId)}`);
+    const data = await res.json();
+    if (data.summary) {
+      resultDiv.innerText = `📢 반응 요약:\n${data.summary}`;
+    } else {
+      resultDiv.innerText = '요약 실패';
+    }
+  });
+
+  // 최초 로드
+  loadSkys();
+}
+
+function createInstagramPanel(panel, username) {
+  const postListEl = panel.querySelector('.sns-content');
+  let posts = [];
+  let loadedCount = 0;
+  const POST_BATCH_SIZE = 10;
+
+  async function loadPosts() {
+    postListEl.innerHTML = '⏳ 게시물 불러오는 중...';
+    const res = await fetch(`/api/recent_instagram_posts?username=${encodeURIComponent(username)}&start=${loadedCount}&count=${POST_BATCH_SIZE}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      posts = posts.concat(data);
+      renderPosts();
+      loadedCount = posts.length;
+    } else if (loadedCount === 0) {
+      postListEl.innerHTML = '<p>게시물이 없습니다.</p>';
+    }
+  }
+
+function renderPosts() {
+  postListEl.innerHTML = '';
+  posts.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'instagram-post-item';
+    div.innerHTML = `
+      <div>${p.image_url ? `<img src="${p.image_url}" style="max-width:120px;"/>` : ''}</div>
+      <div class="caption-text" style="font-weight:600;">${p.caption || ''}</div>
+      <div class="caption-translation" style="font-size:12px; color:#888; display:none;"></div>
+      <div style="font-size:12px; color:#888;">${p.date}</div>
+      <button class="reactionBtn" data-shortcode="${p.shortcode}">반응 요약</button>
+      <div class="reaction-result"></div>
+    `;
+    postListEl.appendChild(div);
+
+    // 번역 처리
+    const translationDiv = div.querySelector('.caption-translation');
+    if (p.caption && p.caption.length > 0) {
+      fetch('/api/translate_if_needed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: p.caption })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.need_translate && data.translated) {
+          translationDiv.innerText = data.translated;
+          translationDiv.style.display = 'block';
+        }
+      });
+    }
+  });
+
+  // 더보기 버튼
+  if (posts.length > 0 && posts.length % POST_BATCH_SIZE === 0) {
+    const moreBtn = document.createElement('button');
+    moreBtn.innerText = '더보기';
+    moreBtn.className = 'more-btn';
+    moreBtn.onclick = loadPosts;
+    postListEl.appendChild(moreBtn);
+  }
+}
+
+  // 반응 요약(댓글 요약) 버튼 이벤트 위임
+  postListEl.addEventListener('click', async e => {
+    if (!e.target.classList.contains('reactionBtn')) return;
+    const btn = e.target;
+    const shortcode = btn.dataset.shortcode;
+    const resultDiv = btn.closest('.instagram-post-item').querySelector('.reaction-result');
+    resultDiv.innerText = '⏳ 반응 요약 중...';
+    const res = await fetch(`/api/instagram_post_reactions?shortcode=${encodeURIComponent(shortcode)}`);
+    const data = await res.json();
+    if (data.summary) {
+      resultDiv.innerText = `📢 반응 요약:\n${data.summary}`;
+    } else {
+      resultDiv.innerText = '요약 실패';
+    }
+  });
+
+  // 최초 로드
+  loadPosts();
+}
+  
+function createTwitterPanel(panel, username) {
+  const tweetListEl = panel.querySelector('.sns-content');
+  let tweets = [];
+  let loadedCount = 0;
+
+  async function loadTweets() {
+    tweetListEl.innerHTML = '⏳ 트윗 불러오는 중...';
+    try {
+      const res = await fetch(`/api/recent_tweets?username=${encodeURIComponent(username)}&start=${loadedCount}&count=${TWEET_BATCH_SIZE}`);
+      const data = await res.json();
+      if (res.ok) {
+        if (Array.isArray(data) && data.length > 0) {
+          tweets = tweets.concat(data);
+          renderTweets();
+          loadedCount = tweets.length;
+        } else if (loadedCount === 0) {
+          tweetListEl.innerHTML = '<p>트윗이 없습니다.</p>';
+        }
+      } else {
+        tweetListEl.innerHTML = `<p>트윗 로딩 오류: ${data.error || "알 수 없는 오류"}</p>`;
+      }
+    } catch (err) {
+      tweetListEl.innerHTML = '<p>트윗 불러오기 에러</p>';
+      console.error(err);
+    }
+  }
+
+  async function renderTweets() {
+    tweetListEl.innerHTML = '';
+    // 1. 트윗 본문을 한 번에 추출
+    const tweetContents = tweets.map(t => t.content);
+    // 2. 번역 묶음 요청
+    let translations = [];
+    if (tweetContents.length) {
+      const res = await fetch('/api/translate_if_needed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts: tweetContents })
+      });
+      const data = await res.json();
+      translations = data.translated || [];
+          await fetch('/api/save_search_history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: username, // 트위터 계정명
+        platform: 'twitter',
+        account_name: username,
+        url: `https://twitter.com/${username}`,
+        success: true,
+        description: tweetContents.join('\n'),
+        summary: '',
+        user_id: null
+      })
+    });
+    }
+    tweets.forEach((t, idx) => {
+      const div = document.createElement('div');
+      div.className = 'tweet-item';
+      div.style.marginBottom = "18px";
+      div.style.paddingBottom = "8px";
+      div.innerHTML = `
+        <div style="font-size:15px;">${t.content}</div>
+        <div style="font-size:11px;color:#888;margin-top:4px;">
+          <a href="${t.url}" target="_blank">트윗 바로가기</a>
+          | ${t.date}
+          | ❤ ${t.like_count} 🔁 ${t.retweet_count} 💬 ${t.reply_count}
+          <button class="reactionBtn" data-username="${t.username}" data-tweetid="${t.tweet_id}" style="margin-left:10px;">반응 보기</button>
+        </div>
+        <div class="reaction-result" style="margin-top:10px; font-size:13px; color:#222;"></div>
+      `;
+      // 번역 결과 표시
+      const translationDiv = document.createElement('div');
+      translationDiv.className = 'tweet-translation';
+      translationDiv.style = 'font-size:12px; color:#888; margin-left:2px; display:none;';
+      if (translations[idx]) {
+        translationDiv.innerText = translations[idx];
+        translationDiv.style.display = 'block';
+      }
+      div.appendChild(translationDiv);
+      tweetListEl.appendChild(div);
+    });
+
+    // 더보기 버튼
+    if (tweets.length === 0 || tweets.length % TWEET_BATCH_SIZE !== 0) return;
+    const moreBtn = document.createElement('button');
+    moreBtn.innerText = '더보기';
+    moreBtn.className = 'more-btn';
+    moreBtn.onclick = loadTweets;
+    tweetListEl.appendChild(moreBtn);
+  } // ← renderTweets 함수 닫는 중괄호
+
+  // 트윗 리스트 컨테이너에 이벤트 위임 방식으로 리스너 부착
+  tweetListEl.addEventListener('click', async (e) => {
+    if (!e.target.classList.contains('reactionBtn')) return;
+    const btn = e.target;
+    const username = btn.dataset.username;
+    const tweetId = btn.dataset.tweetid;
+    const resultDiv = btn.closest('.tweet-item').querySelector('.reaction-result');
+    resultDiv.innerText = '⏳ 트윗 반응 요약 중...';
+
+    try {
+      const res = await fetch(`/api/tweet_reactions?username=${encodeURIComponent(username)}&tweet_id=${encodeURIComponent(tweetId)}`);
+      const data = await res.json();
+      if (res.ok) {
+        resultDiv.innerText = `📢 반응 요약:\n${data.summary}`;
+      } else {
+        resultDiv.innerText = `요약 실패: ${data.error || '알 수 없는 오류'}`;
+      }
+    } catch (err) {
+      resultDiv.innerText = '요청 중 오류 발생';
+      console.error(err);
+    }
+  });
+
+  // 최초 로드
+  loadTweets();
+}
+  
+function createYoutubePanel(panel, inputUrl) {
+  const videoListEl = panel.querySelector('.sns-content');
+  let allGrouped = { "라이브": [], "쇼츠": [], "일반": [] };
+  let loadedCount = { "라이브": 0, "쇼츠": 0, "일반": 0 };
+  const BATCH_SIZE = 5;
+
+  async function fetchAndGroupVideos(channelUrl) {
+    videoListEl.innerHTML = '⏳ 영상 목록 불러오는 중...';
+    try {
+      // 1. 전체 리스트 받아오기
+      const res = await fetch(`/api/video_ids?channel_url=${encodeURIComponent(channelUrl)}`);
+      const videoList = await res.json(); // [{id, title, publish_date, type}, ...]
+      if (!videoList || !Array.isArray(videoList) || videoList.length === 0) {
+        videoListEl.innerHTML = '<p>영상이 없습니다.</p>';
+        return;
+      }
+      if(videoList && videoList.length) {
+        const v = videoList[0];
+        // 프로필 표시 HTML 생성
+        const profileDiv = document.createElement('div');
+        profileDiv.className = 'profile-preview';
+        profileDiv.style = 'display:flex;align-items:center;margin-bottom:16px;';
+        // 썸네일(채널 프사) 정보가 있다면 아래 라인 추가
+        // let profileImg = v.channel_thumbnail ? `<img src="${v.channel_thumbnail}" style="width:48px;height:48px;border-radius:50%;margin-right:12px;">` : '';
+        let profileImg = '';
+        profileDiv.innerHTML = `
+          ${profileImg}
+    <div>
+      <div class="profile-name" style="font-weight:bold;font-size:18px;">${v.channel_title || ''}</div>
+      <div class="profile-desc" style="color:#666;font-size:13px;margin-top:4px;">${v.channel_description || ''}</div>
+      <div class="profile-desc-translation" style="color:#888;font-size:12px;margin-top:4px; display:none;"></div>
+    </div>
+        `;
+        // .sns-header 바로 뒤에 삽입
+  const header = panel.querySelector('.sns-header');
+  if(header) header.insertAdjacentElement('afterend', profileDiv);
+
+  // desc 선언 추가
+  const desc = v.channel_description || '';
+  if (desc) {
+    const translationDiv = profileDiv.querySelector('.profile-desc-translation');
+    fetch('/api/translate_if_needed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: desc })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.need_translate && data.translated) {
+        translationDiv.innerText = data.translated;
+        translationDiv.style.display = 'block';
+      }
+    });
+  }
+}
+
+      // 2. 그룹핑
+      allGrouped = { "라이브": [], "쇼츠": [], "일반": [] };
+      videoList.forEach(v => { if (allGrouped[v.type]) allGrouped[v.type].push(v); });
+      loadedCount = {
+        "일반": Math.min(BATCH_SIZE, allGrouped["일반"].length),
+        "쇼츠": Math.min(BATCH_SIZE, allGrouped["쇼츠"].length),
+        "라이브": Math.min(BATCH_SIZE, allGrouped["라이브"].length)
+      };
+      await renderVideosByType();
+    } catch (err) {
+      videoListEl.innerText = '❌ 영상 목록 불러오기 오류';
+      console.error(err);
+    }
+  }
+
+  // 한 종류(type)만 렌더링하는 함수
+  async function renderVideosByTypeSingle(type) {
+    const section = document.querySelector(`.youtube-section[data-type="${type}"]`);
+    if (!section) return;
+    section.innerHTML = `<h3>${type}</h3>`;
+
+    // 현재 화면에 보여줄 id만 추출
+    const currentSlice = allGrouped[type].slice(0, loadedCount[type]);
+    const idsForDetails = currentSlice.map(v => v.id);
+
+    // 상세정보 요청
+    let detailsArr = [];
+    if (idsForDetails.length) {
+      const detailsRes = await fetch('/api/video_details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_ids: idsForDetails })
+      });
+      detailsArr = await detailsRes.json();
+    }
+    const detailsMap = {};
+    detailsArr.forEach(item => { detailsMap[item.id] = item; });
+
+  const titles = currentSlice.map(v => v.title);
+  let translations = [];
+  if (titles.length) {
+    const res = await fetch('/api/translate_if_needed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts: titles })
+    });
+    const data = await res.json();
+    translations = data.translated || [];
+  }
+
+    // 상세정보와 병합 후 표시
+    currentSlice.forEach((v,idx) => {
+      const detail = detailsMap[v.id] || {};
+      const div = document.createElement('div');
+      div.className = 'video-item';
+      let badge = '';
+      if (type === "라이브") {
+        badge = '<span style="color:white;background:red;border-radius:4px;padding:2px 6px;font-size:12px;margin-left:8px;">LIVE</span>';
+      } else if (type === "쇼츠") {
+        badge = '<span style="color:white;background:#222;border-radius:4px;padding:2px 6px;font-size:12px;margin-left:8px;">SHORTS</span>';
+      }
+      div.innerHTML = `
+        <a href="https://www.youtube.com/watch?v=${v.id}" target="_blank">
+          <img src="${detail.thumbnail_url || ''}" alt="썸네일" />
+        </a>
+        <div class="video-info">
+          <div class="video-title">${v.title} ${badge}</div>
+          <div style="font-size:12px; color:#888;">공개: ${detail.publish_date || v.publish_date || ''}</div>
+          <button class="summaryBtn"
+            data-mode="description"
+            data-videourl="https://www.youtube.com/watch?v=${v.id}"
+            data-title="${v.title}"
+            data-thumb="${detail.thumbnail_url || ''}"
+            data-date="${detail.publish_date || v.publish_date || ''}"
+          >영상 소개</button>
+          <button class="summaryBtn"
+            data-mode="audio"
+            data-videourl="https://www.youtube.com/watch?v=${v.id}"
+            data-title="${v.title}"
+            data-thumb="${detail.thumbnail_url || ''}"
+            data-date="${detail.publish_date || v.publish_date || ''}"
+          >내용 요약</button>
+          <div class="summary-result" style="margin-top:8px; font-size:14px; color:#333;"></div>
+          <div class="sns-link-btns"></div>
+        </div>
+      `;
+      const snsBtnsDiv = div.querySelector('.sns-link-btns');
+      let links = detail.sns_links || v.sns_links || [];
+      if (!Array.isArray(links)) links = [];
+  links.forEach(link => {
+    const btn = document.createElement('button');
+    btn.className = 'sns-link-btn';
+    let displayName = '';
+    if (link.platform === 'twitter') displayName = '트위터 타임라인';
+    else if (link.platform === 'instagram') displayName = '인스타그램 게시물';
+    else if (link.platform === 'mastodon') displayName = '마스토돈 타임라인';
+    else displayName = '홈페이지';
+    btn.innerText = displayName;
+    btn.dataset.platform = link.platform;
+    btn.dataset.id = link.id;
+    btn.style = 'margin:3px 4px; padding:2px 10px; border-radius:4px; border:1px solid #bbb; background:#f9f9f9;';
+    btn.onclick = function() {
+      // 홈페이지(website)는 패널 생성 없이 새 창만 열고 종료
+   const allowed = ["youtube", "twitter", "instagram", "mastodon", "bluesky"];
+  if (!allowed.includes(link.platform)) {
+    // 홈페이지 등은 새 창만 열고, 기타는 아무 동작도 하지 않게 하려면 아래처럼
+    if (link.url) window.open(link.url, "_blank");
+    return;
+  }
+      // ↓ 아래는 SNS 패널 생성 코드
+      const newPanel = document.createElement('div');
+      newPanel.className = 'sns-panel';
+      newPanel.innerHTML = `
+        <div class="sns-header">
+          <strong>${link.platform.toUpperCase()}</strong>
+          <button class="removeBtn">❌</button>
+        </div>
+        <div class="sns-content">📡 데이터 로딩 중...</div>
+      `;
+      snsPanels.prepend(newPanel);
+      if (link.platform === "youtube") {
+        createYoutubePanel(newPanel, link.url);
+      } else if (link.platform === "twitter") {
+        createTwitterPanel(newPanel, link.id);
+      } else if (link.platform === "instagram") {
+        createInstagramPanel(newPanel, link.id);
+      } else if (link.platform === "mastodon") {
+        let [username, instance] = link.id.split('@');
+        instance = instance ? 'https://' + instance : 'https://mastodon.social';
+        createMastodonPanel(newPanel, username, instance);
+      } else {
+        window.open(link.url, "_blank");
+      }
+    };
+    snsBtnsDiv.appendChild(btn);
+  });
+      const titleDiv = div.querySelector('.video-title');
+    const translationDiv = document.createElement('div');
+    translationDiv.className = 'video-title-translation';
+    translationDiv.style = 'font-size:12px; color:#888; margin-left:2px; display:none;';
+    if (translations[idx]) {
+      translationDiv.innerText = translations[idx];
+      translationDiv.style.display = 'block';
+    }
+    titleDiv.parentNode.insertBefore(translationDiv, titleDiv.nextSibling);
+    section.appendChild(div);
+  });
+    // 더보기 버튼
+    if (loadedCount[type] < allGrouped[type].length) {
+      const moreBtn = document.createElement('button');
+      moreBtn.innerText = '더보기';
+      moreBtn.className = 'more-btn';
+      moreBtn.onclick = async () => {
+        loadedCount[type] = Math.min(loadedCount[type] + BATCH_SIZE, allGrouped[type].length);
+        await renderVideosByTypeSingle(type); // 한 종류만 다시 그림
+      };
+      section.appendChild(moreBtn);
+    }
+  }
+
+  // 전체 렌더링 함수
+  async function renderVideosByType() {
+    videoListEl.innerHTML = '';
+    const sectionsContainer = document.createElement('div');
+    sectionsContainer.className = 'youtube-sections';
+    for (const type of ["일반", "쇼츠", "라이브"]) {
+      if (!allGrouped[type] || allGrouped[type].length === 0) continue;
+      const section = document.createElement('div');
+      section.className = 'youtube-section';
+      section.setAttribute('data-type', type); // type별로 구분
+      section.innerHTML = `<h3>${type}</h3>`;
+      sectionsContainer.appendChild(section);
+    }
+    videoListEl.appendChild(sectionsContainer);
+
+    // 각 종류별로 한 번씩 렌더링
+    for (const type of ["일반", "쇼츠", "라이브"]) {
+      if (!allGrouped[type] || allGrouped[type].length === 0) continue;
+      await renderVideosByTypeSingle(type);
+    }
+  }
+
+  // 최초 로드
+  fetchAndGroupVideos(inputUrl);
+};
+
+</script>
+</body>
+</html>
