@@ -1,0 +1,16 @@
+Flask
+openai>=1.0.0
+pytube
+yt_dlp
+python-dotenv
+beautifulsoup4
+requests
+torch
+openai-whisper
+snscrape
+instaloader
+langdetect
+pymongo
+google-api-python-client
+mastodon-py
+streamlit
